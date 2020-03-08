@@ -21,28 +21,26 @@ class ModelSwitcher(object):
             self.data = deepcopy(data)
 
 class DataPreprocessor(object):
-    def __init__(self, df, target, cat_features=[], cont_features=[], balance_class=False, scale_type=False, poly_degree=False):
+    def __init__(self, df, target, cat_features={}, cont_features=[]):
         self.df = df
-        self.random_state = 1
-        self.test_size = .2
-        self.poly_degree = poly_degree
-        self.balance_class = balance_class
-        self.scale_type = scale_type
-        self.cat_features = pd.Index(cat_features)
+        self._get_cat_features(cat_features)
         self.cont_features = pd.Index(cont_features)
         self.init_selection = self.cont_features.union(self.cat_features, sort=False)
         self.selection = self.init_selection
         self.target = target
         self.X = df[self.selection]
         self.y = df[target]
-        self._data_preprocessing()
+
+    def _get_cat_features(self, feature_dict):
+        self.cat_features = pd.Index(feature_dict.get("cat_features", []))
+        self.impute_dummies = pd.Index(feature_dict.get("impute_dummies", []))
 
     def _train_test_split(self):
         X, y = self.X, self.y
         X_train, X_test, y_train, y_test = train_test_split(X, y,test_size=self.test_size, random_state=self.random_state)
         self.X_train, self.X_test, self.y_train, self.y_test = X_train, X_test, y_train, y_test
 
-    def _scale_setter(self):
+    def _fit_scale(self):
         if self.scale_type == "standard":
             print("Using standard scaler")
             self.scaler = StandardScaler()
@@ -55,19 +53,12 @@ class DataPreprocessor(object):
             return
         self.scaler.fit(self.X_train)
 
-    def _scale_getter(self):
+    def _transform_scale(self):
         if self.scale_type == False:
             print("Skipping scaling")
             return
         self.X_train = self.scaler.transform(self.X_train)
         self.X_test = self.scaler.transform(self.X_test)
-
-    def _data_preprocessing(self):
-        self._poly_features()
-        self._train_test_split()
-        self._class_imbalance(0, 1)
-        self._scale_setter()
-        self._scale_getter()
 
     def _class_imbalance(self, majority_val, minority_val):
         target = self.target
@@ -117,6 +108,18 @@ class DataPreprocessor(object):
             print("Skipping polynomial features")
             self.poly_degree = False
             self.X = self.X[self.init_selection]
+
+    def data_preprocessing(self, balance_class=False, scale_type=False, poly_degree=False):
+        self.random_state = 1
+        self.test_size = .2
+        self.poly_degree = poly_degree
+        self.balance_class = balance_class
+        self.scale_type = scale_type
+        self._poly_features()
+        self._train_test_split()
+        self._class_imbalance(0, 1)
+        self._fit_scale()
+        self._transform_scale()
 
     def column_drop(self, columns):
         self.selection = self.selection.drop(labels=columns)
