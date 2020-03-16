@@ -8,4 +8,4 @@ Multiclassification machine learning project. Most of the work is done in the "P
 
 The data and contest information can be found [here](https://www.drivendata.org/competitions/7/pump-it-up-data-mining-the-water-table/page/23/)
 
-![Graph showing the relationship between old and total standing head on well functionality]("imgs/years_old-v-tsh.png")
+![Graph showing the relationship between old and total standing head on well functionality](imgs/years_old-v-tsh.png)
