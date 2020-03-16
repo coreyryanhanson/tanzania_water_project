@@ -2,6 +2,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 
+#Changes long numeric values and replaces them with more human readable abbreviations.
 def scale_units(value):
     if value < .99:
         new_val = str(round(value,3))
@@ -19,12 +20,14 @@ def scale_units(value):
         new_val = str(value)
     return new_val
 
-
+#Inverts the log functions put on features. To be applied on ticks, so that the scale is visually condensed but the values
+# are human readable.
 def unlog_plot(values, base):
     to_series = pd.Series(values)
     exponented = base**to_series
     return exponented.map(scale_units).values.tolist()
 
+#Shows the full breadth of possilbe values and nans for a column of a dataframe.
 def full_value_counts(df, column):
     unique = df[column].unique().size
     totalna = df[column].isna().sum()

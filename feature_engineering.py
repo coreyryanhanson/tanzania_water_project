@@ -34,13 +34,8 @@ def determine_years_old(year_built, day, year):
     day_rounded = round(day/365*4)/4
     return year + day_rounded - year_built
 
-
-
-# def date_features(df):
-#     df_j["check-day"] = df_j["date_recorded"].map(datetime_to_day_of_year)
-#     df_j["check-season"] = df_j["day_of_year"].map(lambda x: determine_season(x, False))
-#     df_j["check-period"] = df_j["day_of_year"].map(lambda x: day_of_year_to_period(x, False))
-
+#Function to be applied to the well dataframe. Takes the construction year and date recorded columns and creates features
+# for the age of the well and the season/period(calculated from a cosine function) that the check was made.
 def date_features(line):
     date, year_built = line["date_recorded"], line["construction_year"]
     day, year = datetime_to_day_of_year(date), date.year
@@ -49,5 +44,6 @@ def date_features(line):
     line["check-season"], line["check-period"], line["years_old"] = season, period, years_old
     return line
 
+#Applies the above function.
 def add_features(df):
     return df.apply(date_features, axis=1)

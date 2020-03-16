@@ -9,7 +9,7 @@ from sklearn.metrics import mean_squared_error, accuracy_score, f1_score, roc_au
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, PolynomialFeatures
 
-
+#Incomplete function to handle models/grid search.
 class ModelSwitcher(object):
     def __init__(self, data, duplicate=False):
         self.duplicate = duplicate
@@ -21,13 +21,18 @@ class ModelSwitcher(object):
         else:
             self.data = deepcopy(data)
 
+#An object that manages the workflow for dummy variables, transforming features, polynomial features, class balancing,
+# and scaling data.
 class DataPreprocessor(object):
-    def __init__(self, df, target, cat_features={}, cont_features={}, transformed_interactions=False, dummy_interactions=False):
+    def __init__(self, df, target, cat_features={}, cont_features={}, create_dummies=False,
+                 transformed_interactions=False, dummy_interactions=False, scale_dummies=False):
         self.df = df
+        self.create_dummies = create_dummies
         self.transformed_interactions = transformed_interactions
         self.dummy_interactions = dummy_interactions
+        self.scale_dummies = scale_dummies
         self._set_features(target, cat_features, cont_features)
-        self.X = df[self.cols]
+        self.X = pd.concat([df[self.cols.drop(labels=self.cols_generated_dummies)], self.dummies], axis=1)
         self.y = df[target]
 
     #Creates various attributes storing column names from specifically structured dictionaries for the
@@ -44,7 +49,14 @@ class DataPreprocessor(object):
         self.cols_nominal = self._get_indiv_feature(feature_dict, "nominal_features")
         self.cols_standard_dummies = self._get_indiv_feature(feature_dict, "standard_dummies")
         self.cols_impute_dummies = self._get_indiv_feature(feature_dict, "impute_dummies")
+        if self.create_dummies:
+            self._generate_dummies()
+            self.cols_nominal = pd.Index([])
+        else:
+            self.dummies = pd.DataFrame()
+            self.cols_generated_dummies = pd.Index([])
         self.cols_dummies = self.cols_standard_dummies.union(self.cols_impute_dummies, sort=False)
+        self.cols_dummies = self.cols_dummies.union(self.cols_generated_dummies, sort=False)
         self.cols_categorical = self.cols_nominal.union(self.cols_dummies, sort=False)
 
     # Gathers continuous column name information and creates corresponding attributes, calling transformation functions if specified.
@@ -88,12 +100,27 @@ class DataPreprocessor(object):
             self.df[new_col_name] = self.df[column].map(lambda x: math.log(x, base) if base else math.log(x))
             self.cols_logged = self.cols_logged.append(pd.Index([new_col_name]))
 
+    # Generates dummy variables from a list of categorical columns.
+    def _generate_dummies(self):
+        self.dummies = pd.DataFrame()
+        print("Creating Dummies")
+        for column in self.cols_nominal:
+            unique = self.df[column].unique().size
+            if unique > 20:
+                print(f"Warning: {column} has {unique} unique values")
+            self.df[column] = self.df[column].astype('category')
+            self.dummies = pd.concat([self.dummies, pd.get_dummies(self.df[column], prefix=column, drop_first=True)], axis=1)
+        self.cols_generated_dummies = self.dummies.columns
+
+    #Performs a train_test split.
     def _train_test_split(self):
         X, y = self.X, self.y
         X_train, X_test, y_train, y_test = train_test_split(X, y,test_size=self.test_size, random_state=self.random_state)
         self.X_train, self.X_test, self.y_train, self.y_test = X_train, X_test, y_train, y_test
 
+    #Creates a scaler attribute fit to the data loaded in the object.
     def _fit_scale(self):
+        self._choose_scaled_columns()
         if self.scale_type == "standard":
             print("Using standard scaler")
             self.scaler = StandardScaler()
@@ -104,14 +131,15 @@ class DataPreprocessor(object):
             print("No scaling specified")
             self.scale_type = False
             return
-        self.scaler.fit(self.X_train[self.scaled_columns])
+        self.scaler.fit(self.X_train[self.cols_scaled])
 
+    #Rescales the data with the saved scalar attribute.
     def _rescale(self):
         if self.scale_type == False:
             print("Skipping scaling")
             return
         else:
-            columns = self.scaled_columns
+            columns = self.cols_scaled
 
         #Overwrites original train/test dataframes to prevent linkage errors.
         self.X_test, self.X_train = self.X_test.copy(), self.X_train.copy()
@@ -122,12 +150,14 @@ class DataPreprocessor(object):
         self.X_train[columns] = X_train[columns]
         self.X_test[columns] = X_test[columns]
 
+    #Executes the scaling but preserves the index and returns it to a DataFrame.
     def _transform_scale(self, data):
-        to_transform = data[self.scaled_columns]
+        to_transform = data[self.cols_scaled]
         indices = to_transform.index
         scaled = self.scaler.transform(to_transform)
-        return pd.DataFrame(scaled, columns=self.scaled_columns, index=indices)
+        return pd.DataFrame(scaled, columns=self.cols_scaled, index=indices)
 
+    #Performs class balancing using the algorithm indicated in the arguments.
     def _class_imbalance(self):
         df = pd.concat([self.X_train, self.y_train], axis=1)
         if self.balance_class == "upsample":
@@ -145,6 +175,7 @@ class DataPreprocessor(object):
         else:
             print("Skipping class imbalance functions")
 
+    #Performs a random choice to upsample/downsample all values to those with the maximum or minimum counts.
     def _simple_resample(self, df, down=False):
         target = self.target
         groups = [item for item in df[target].unique()]
@@ -162,6 +193,7 @@ class DataPreprocessor(object):
             new_df = pd.concat([new_df, resampled])
         self.X_train, self.y_train = new_df.drop(self.target, axis=1), new_df[self.target]
 
+    #Performs a SMOTE upsampling of the data. If there are nominal columns detected, it will change SMOTE algorithms.
     def _smote_data(self):
         if self.cols_nominal.size > 0:
             cats = self.X_train.columns.isin(self.cols_nominal)
@@ -170,6 +202,7 @@ class DataPreprocessor(object):
             sm = SMOTE(sampling_strategy='not majority', random_state=self.random_state)
         self.X_train, self.y_train = sm.fit_sample(self.X_train, self.y_train)
 
+    #Performs tomek links. Can not handle nominal values.
     def _tomek_data(self):
         if self.cols_nominal.size > 0:
             print("Skipping Tomek Links. Cannot perform with raw categorical data. Create dummies to use.")
@@ -177,6 +210,7 @@ class DataPreprocessor(object):
         tl = TomekLinks()
         self.X_train, self.y_train = tl.fit_sample(self.X_train, self.y_train)
 
+    #Creates polynomial features and creates a selection of those columns.
     def _poly_features(self):
         if type(self.poly_degree) == int:
             print(f"Getting polynomial features of degree {self.poly_degree}")
@@ -208,8 +242,15 @@ class DataPreprocessor(object):
         else:
             return columns
 
-    def data_preprocessing(self, balance_class=False, scale_type=False, poly_degree=False, transform_dummies=False):
-        self.scaled_columns = self.cols.drop(labels=self.cols_nominal)
+    #Determines whether or not dummy variables will be scaled based on an initialization argument.
+    def _choose_scaled_columns(self):
+        if self.scale_dummies:
+            self.cols_scaled = self.cols.drop(labels=self.cols_nominal)
+        else:
+            self.cols_scaled = self.cols.drop(labels=self.cols_categorical)
+
+    #Chains the commands together for polynomial features, class balancing, and scaling.
+    def data_preprocessing(self, balance_class=False, scale_type=False, poly_degree=False):
         self.random_state = 1
         self.test_size = .2
         self.poly_degree = poly_degree
@@ -225,10 +266,13 @@ class DataPreprocessor(object):
     def column_drop(self, columns):
         self.cols = self.cols.drop(labels=columns)
 
-
+#Prints the models, accuracy/f1 score.
 def evaluate_model(model, X_test, y_test):
     y_pred = model.predict(X_test)
-    f1 = f1_score(y_test, y_pred)
+    if y_test.unique().size > 2:
+        f1 = f1_score(y_test, y_pred, average='micro')
+    else:
+        f1 = f1_score(y_test, y_pred)
     accuracy = accuracy_score(y_test, y_pred)
     print("F1 Score:", f1)
     print("Accuracy:", accuracy)

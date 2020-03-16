@@ -4,25 +4,39 @@ import pandas as pd
 import re
 from sklearn.impute import SimpleImputer
 
+#Handles the file opening to expedite the pickle reading process.
 def pickle_read(path):
     with open(path, "rb") as f:
         pickle_file = pickle.load(f)
     return pickle_file
 
+#Handles the file opening to expedite the pickle writing process.
 def pickle_write(item, path):
     with open(path, "wb") as f:
         pickle.dump(item, f)
 
+#Chains the non imputing data cleaning commands.
+def main_data_cleaning(df):
+    df = df.drop(columns=["recorded_by"])
+    df = simp_datetime_map(df, "date_recorded")
+    return df
+
+#Creates a Pandas Index object for column names found via a regex search.
 def extract_column_names(df, term):
     matches = [column for column in df.columns if re.search(term, column)]
     return pd.Index(matches)
 
+#Was used to impute values before the sklearn libraries were imported.
 def extract_impute_values(df, column, bad_data):
     isolate_good = df[df[column] != bad_data]
     return isolate_good[column].median()
 
+#Creates a new column containing dummy variables indicating what was missing when imputing data.
 def missing_val_dummies(df, column, bad_data):
-     return np.where(df[column].values == bad_data, 1, 0)
+    if np.isnan(bad_data):
+        return np.where(df[column].isna().values == True, 1, 0)
+    else:
+        return np.where(df[column].values == bad_data, 1, 0)
 
 #Loops through a dictionary containing parameters to construct imputer objects. Arguments required by the dictionary
 #for the function to work are a key containing the column name followed by a list of values in this order:
@@ -50,6 +64,7 @@ def impute_mult_categorical(df, impute_dict):
         df[column] = pd.Series(imputed.ravel(), index=index)
     return df
 
+#Maps a dataframe's column to datetime values.
 def simp_datetime_map(df, col, format=None):
     df[col] = df[col].map(lambda x: pd.to_datetime(x, format=format))
     return df
