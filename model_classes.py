@@ -5,7 +5,7 @@ from copy import copy, deepcopy
 from sklearn.utils import resample
 from imblearn.over_sampling import SMOTE, SMOTENC
 from imblearn.under_sampling import TomekLinks
-from sklearn.metrics import mean_squared_error, accuracy_score, f1_score, roc_auc_score
+from sklearn.metrics import mean_squared_error, accuracy_score, f1_score, roc_auc_score, precision_score, recall_score
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, MinMaxScaler, PolynomialFeatures
 
@@ -274,5 +274,9 @@ def evaluate_model(model, X_test, y_test):
     else:
         f1 = f1_score(y_test, y_pred)
     accuracy = accuracy_score(y_test, y_pred)
+    precision = precision_score(y_test, y_pred)
+    recall = recall_score(y_test, y_pred)
     print("F1 Score:", f1)
     print("Accuracy:", accuracy)
+    print("Precision:", precision)
+    print("Recall:", recall)
