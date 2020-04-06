@@ -15,7 +15,7 @@ class Multiplot(object):
         self.columns = self.df.columns
         self.figsize = figsize
         self.set_cols(n_cols)
-        self.linearity_plots = 4
+        self.linearity_plots = 5
         self.style = style
 
     def _multicol_plot_wrapper(func):
@@ -77,6 +77,13 @@ class Multiplot(object):
         line = np.array([[x.min(), 0], [x.max(), 0]]).T
         sns.scatterplot(x, resid, ax=self.last_ax)
         sns.lineplot(x=line[0], y=line[1], ax=self.last_ax, **{"color": "r"})
+        self.last_ax.set_title('Residual_plot')
+        self.last_ax.set_ylabel('Residual values')
+
+    def _plot_resid_hist(self, model):
+        sns.distplot(model.resid, ax=self.last_ax)
+        self.last_ax.set_title('Residual_distribution')
+        self.last_ax.set_xlabel('Residual values')
 
     def _plot_yfit_y_pred_v_x(self, model):
         """Plots a y and y fitted vs x graph"""
@@ -110,6 +117,8 @@ class Multiplot(object):
         if i == 2:
             self._plot_ccpr(model)
         if i == 3:
+            self._plot_resid_hist(model)
+        if i == 4:
             self._plot_qq(model)
 
     def _set_rows(self, n_plots=False):
@@ -119,6 +128,26 @@ class Multiplot(object):
         if not n_plots:
             n_plots = self.df.columns.size
         self.n_rows = math.ceil(n_plots / self.n_cols)
+
+    def _test_goldfeld_quandt(self, model, lq, uq):
+        """Runs a Goldfeld Quandt test for heteroscadasticity."""
+
+        column = self.last_col
+        lwr = self.df[column].quantile(q=lq)
+        upr = self.df[column].quantile(q=uq)
+        middle_idx = self.df[(self.df[column] >= lwr) & (self.df[column] <= upr)].index
+
+        idx = [x - 1 for x in self.df.index if x not in middle_idx]
+        gq_labels = ['F statistic', 'p-value']
+        gq = sms.het_goldfeldquandt(model.resid.iloc[idx], model.model.exog[idx])
+        return list(zip(gq_labels, gq))
+
+    def _test_jarque_bera(self, model):
+        """Runs a Jarque-Bera test for normality"""
+
+        jb_labels = ['Jarque-Bera', 'Prob', 'Skew', 'Kurtosis']
+        jb = sms.jarque_bera(model.resid)
+        return list(zip(jb_labels, jb))
 
     def _xyz(self, terms, iterable):
         """Grabs axis values from a dictionary and inserts the iterable into
@@ -172,11 +201,22 @@ class Multiplot(object):
         r_squared, mse = model.rsquared, model.mse_model,
         rmse, p_values = math.sqrt(mse), model.pvalues
         coef, intercept = model.params[1], model.params[0]
+
+        jb = self._test_jarque_bera(model)
+        gq = self._test_goldfeld_quandt(model, .45, .55)
+
         print(f"{column} predicting {target}:")
         print(f"R2: {r_squared}, MSE: {mse}, RMSE: {rmse}:")
         print(f"Coeficient: {coef}, Intercept: {intercept}")
+        print("")
         print("P-values:")
         print(p_values)
+        print("")
+        print("Jarque-Bera:")
+        print(*jb)
+        print("")
+        print("Goldfeld-Quandt:")
+        print(*gq)
         self._sb_linearity_plots(model)
 
         # Resets rows to their defaults
